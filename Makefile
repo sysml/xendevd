@@ -15,6 +15,7 @@ INC	+= $(shell find inc/ -name "*.h")
 
 
 CFLAGS		+= -Iinc -Wall -g -O3
+LDFLAGS		+= -lxenstore
 
 ifeq ($(debug),y)
 CFLAGS		+= -DDEBUG
