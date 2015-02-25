@@ -1,5 +1,5 @@
 #include <xdd/bridge.h>
-#include <xdd/iface.h>
+#include <xdd/vif.h>
 #include <xdd/xs_helper.h>
 
 #include <errno.h>
@@ -68,45 +68,19 @@ int main(int argc, char** argv)
 
     bridge = xs_read_k(xs, xb_path, "bridge");
     if (bridge == NULL) {
-        goto out_err;
+        xs_write_k(xs, "Unable to read bridge from xenstore", xb_path, "hotplug-error");
+        xs_write_k(xs, "error", xb_path, "hotplug-status");
+        goto out;
     }
 
-    /* Set interface */
     switch (op) {
         case ONLINE:
-            errno = iface_set_up(vif);
+            errno = vif_hotplug_online(xs, xb_path, bridge, vif);
             break;
         case OFFLINE:
-            errno = iface_set_down(vif);
+            errno = vif_hotplug_offline(xs, xb_path, bridge, vif);
             break;
     }
-    if (errno) {
-        goto out_err;
-    }
-
-    /* Add interface to bridge */
-    switch (op) {
-        case ONLINE:
-            errno = bridge_add_if(bridge, vif);
-            break;
-        case OFFLINE:
-            errno = bridge_rem_if(bridge, vif);
-            break;
-    }
-    if (errno) {
-        goto out_err;
-    }
-
-    if (op == ONLINE) {
-        xs_write_k(xs, "connected", xb_path, "hotplug-status");
-    }
-
-    goto out;
-
-out_err:
-    /* FIXME: provide an error description */
-    xs_write_k(xs, "failure", xb_path, "hotplug-error");
-    xs_write_k(xs, "error", xb_path, "hotplug-status");
 
 out:
     if (bridge) {
