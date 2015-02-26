@@ -11,7 +11,7 @@
 #include <linux/sockios.h>
 
 
-static int iface_flag_set(int flag, char* dev)
+static int iface_flag_set(int flag, const char* dev)
 {
     int err;
     struct ifreq ifr;
@@ -48,12 +48,12 @@ static int iface_flag_set(int flag, char* dev)
     return 0;
 }
 
-int iface_set_up(char* dev)
+int iface_set_up(const char* dev)
 {
     return iface_flag_set(IFF_UP, dev);
 }
 
-int iface_set_down(char* dev)
+int iface_set_down(const char* dev)
 {
     return iface_flag_set(-IFF_UP, dev);
 }
