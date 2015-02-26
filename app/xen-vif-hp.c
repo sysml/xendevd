@@ -61,7 +61,7 @@ int main(int argc, char** argv)
 
 
     /* Execute */
-    xs = xs_open(XS_OPEN_READONLY);
+    xs = xs_open(0);
     if (xs == NULL) {
         goto out;
     }
