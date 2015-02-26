@@ -11,7 +11,7 @@
 #include <linux/sockios.h>
 
 
-static int bridge_if(int op, char* bridge, char* dev)
+static int bridge_if(int op, const char* bridge, const char* dev)
 {
 	int err;
 	struct ifreq ifr;
@@ -42,12 +42,12 @@ static int bridge_if(int op, char* bridge, char* dev)
     return 0;
 }
 
-int bridge_add_if(char* bridge, char* dev)
+int bridge_add_if(const char* bridge, const char* dev)
 {
     return bridge_if(SIOCBRADDIF, bridge, dev);
 }
 
-int bridge_rem_if(char* bridge, char* dev)
+int bridge_rem_if(const char* bridge, const char* dev)
 {
     return bridge_if(SIOCBRDELIF, bridge, dev);
 }
