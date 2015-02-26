@@ -21,9 +21,17 @@ enum operation {
 struct xdd_conf {
     int help;
     int daemonize;
+    int write_pid_file;
+    char* pid_file;
 };
 
-#define default_conf { 0, 0 }
+static void init_xdd_conf(struct xdd_conf* conf)
+{
+    conf->help = 0;
+    conf->daemonize = 0;
+    conf->write_pid_file = 0;
+    conf->pid_file = "/var/run/xendevd.pid";
+}
 
 static int parse_args (int argc, char** argv, struct xdd_conf* conf)
 {
@@ -31,6 +39,7 @@ static int parse_args (int argc, char** argv, struct xdd_conf* conf)
     const struct option long_opts[] = {
         { "help"               , no_argument       , NULL , 'h' },
         { "daemon"             , no_argument       , NULL , 'D' },
+        { "pid-file"           , required_argument , NULL , 'p' },
         { NULL , 0 , NULL , 0 }
     };
 
@@ -52,6 +61,12 @@ static int parse_args (int argc, char** argv, struct xdd_conf* conf)
 
             case 'D':
                 conf->daemonize = 1;
+                conf->write_pid_file = 1;
+                break;
+
+            case 'p':
+                conf->write_pid_file = 1;
+                conf->pid_file = optarg;
                 break;
 
             default:
@@ -77,6 +92,7 @@ static void print_usage(char* cmd)
     printf("Options:\n");
     printf("  -D, --daemon           Run in background\n");
     printf("  -h, --help             Display this help and exit\n");
+    printf("      --pid-file <file>  Write process pid to file [default: /var/run/xendevd.pid]\n");
 }
 
 
@@ -96,13 +112,22 @@ int main(int argc, char** argv)
     const char* action = NULL;
 
     int err;
-    struct xdd_conf conf = default_conf;
+    struct xdd_conf conf;
+
 
     /* Parse arguments */
+    init_xdd_conf(&conf);
+
     err = parse_args(argc, argv, &conf);
     if (err || conf.help) {
         print_usage(argv[0]);
         return err ? 1 : 0;
+    }
+
+    if (conf.write_pid_file) {
+        FILE* pidf = fopen(conf.pid_file, "w");
+        fprintf(pidf, "%d", getpid());
+        fclose(pidf);
     }
 
     if (conf.daemonize) {
@@ -167,4 +192,6 @@ out:
             udev_device_unref(dev);
         }
     }
+
+    /* FIXME: remove pid file upon exit*/
 }
