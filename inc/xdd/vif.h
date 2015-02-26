@@ -7,7 +7,7 @@
 #include <xenstore.h>
 
 
-int vif_hotplug_online(struct xs_handle* xs, char* xb_path, char* bridge, char* vif);
-int vif_hotplug_offline(struct xs_handle* xs, char* xb_path, char* bridge, char* vif);
+int vif_hotplug_online(struct xs_handle* xs, const char* xb_path, const char* bridge, const char* vif);
+int vif_hotplug_offline(struct xs_handle* xs, const char* xb_path, const char* bridge, const char* vif);
 
 #endif /* __XDD_VIF_HH__ */

@@ -4,7 +4,7 @@
 #include <xdd/xs_helper.h>
 
 
-int vif_hotplug_online(struct xs_handle* xs, char* xb_path, char* bridge, char* vif)
+int vif_hotplug_online(struct xs_handle* xs, const char* xb_path, const char* bridge, const char* vif)
 {
     errno = bridge_add_if(bridge, vif);
     if (errno) {
@@ -29,7 +29,7 @@ out:
     return 0;
 }
 
-int vif_hotplug_offline(struct xs_handle* xs, char* xb_path, char* bridge, char* vif)
+int vif_hotplug_offline(struct xs_handle* xs, const char* xb_path, const char* bridge, const char* vif)
 {
     errno = iface_set_down(vif);
     if (errno) {
