@@ -33,7 +33,7 @@ static void init_xdd_conf(struct xdd_conf* conf)
     conf->pid_file = "/var/run/xendevd.pid";
 }
 
-static int parse_args (int argc, char** argv, struct xdd_conf* conf)
+static int parse_args(int argc, char** argv, struct xdd_conf* conf)
 {
     const char *short_opts = "hD";
     const struct option long_opts[] = {
