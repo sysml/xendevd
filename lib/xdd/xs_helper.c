@@ -8,7 +8,7 @@
 #include <xenstore.h>
 
 
-char* xs_read_k(struct xs_handle* xs, char* base_path, char* key)
+char* xs_read_k(struct xs_handle* xs, const char* base_path, const char* key)
 {
     char* path;
     char* value;
@@ -25,7 +25,7 @@ char* xs_read_k(struct xs_handle* xs, char* base_path, char* key)
     return value;
 }
 
-int xs_write_k(struct xs_handle* xs, char* value, char* base_path, char* key)
+int xs_write_k(struct xs_handle* xs, const char* value, const char* base_path, const char* key)
 {
     bool ret;
     char* path;
