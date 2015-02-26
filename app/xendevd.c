@@ -148,7 +148,7 @@ int main(int argc, char** argv)
 
 
     /* setup xenstore */
-    xs = xs_open(XS_OPEN_READONLY);
+    xs = xs_open(0);
 
 
     /*  main loop */
