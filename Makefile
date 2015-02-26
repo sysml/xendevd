@@ -26,6 +26,7 @@ include make.mk
 
 all: $(APP)
 
+app/xendevd: LDFLAGS += -ludev
 $(APP): % : %.o $(LIB)
 	$(call clink, $^, $@)
 
