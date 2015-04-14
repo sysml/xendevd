@@ -1,0 +1,11 @@
+[Unit]
+Description=XenDevD: Xen device plugging daemon
+After=xencommons.service
+
+[Service]
+Type=forking
+PIDFile=/var/run/xendevd.pid
+ExecStart=/usr/sbin/xendevd -D --pid-file /var/run/xendevd.pid
+
+[Install]
+WantedBy=multi-user.target
