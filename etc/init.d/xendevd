@@ -1,0 +1,96 @@
+#!/bin/sh
+### BEGIN INIT INFO
+# Provides:          xendevd
+# Required-Start:    $remote_fs $syslog $xencommons
+# Required-Stop:     $remote_fs $syslog $xencommons
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: XenDevD: Xen device plugging daemon
+# Description:       udevd like daemon handling xen virtual devices.
+### END INIT INFO
+
+# Author: Filipe Manco <filipe.manco@neclab.eu>
+
+DESC="XenDevD"
+DAEMON=/usr/sbin/xendevd
+NAME=$(basename $DAEMON)
+
+PIDFILE=/var/run/$NAME.pid
+DAEMON_ARGS="--pid-file $PIDFILE -D"
+
+[ -x "$DAEMON" ] || exit 0
+
+do_start()
+{
+    PID=`pidof $NAME`
+    if [ $? -eq 0 ]
+    then
+        echo "Daemon is already running"
+        return 1
+    fi
+
+    $DAEMON $DAEMON_ARGS
+    if [ $? -ne 0 ]
+    then
+        echo "Could not start daemon"
+        return 2
+    fi
+
+    return 0
+}
+
+do_stop()
+{
+    PID=`pidof $NAME`
+    if [ $? -ne 0 ]
+    then
+        echo "Daemon is not running"
+        return 1
+    fi
+
+    kill $PID
+    if [ $? -ne 0 ]
+    then
+        echo "Could not stop daemon"
+        return 2
+    fi
+
+    rm -f $PID_FILE
+    return 0
+}
+
+do_status()
+{
+    PID=`pidof $NAME`
+    if [ $? -eq 0 ]
+    then
+        echo "Daemon is running with pid $PID"
+    else
+        echo "Daemon is not running"
+    fi
+
+    return 0
+}
+
+
+case "$1" in
+    start)
+        echo "Starting $DESC"
+        do_start
+        ;;
+    stop)
+        echo "Stoping $DESC"
+        do_stop
+        ;;
+    status)
+        do_status
+        ;;
+    restart)
+        echo "Restarting $DESC"
+        do_stop
+        do_start
+        ;;
+    *)
+        echo "Usage: $1 {start|stop|status|restart}" >&2
+        ;;
+esac
