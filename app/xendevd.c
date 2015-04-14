@@ -114,6 +114,8 @@ int main(int argc, char** argv)
     int err;
     struct xdd_conf conf;
 
+    FILE* pidf = NULL;
+
 
     /* Parse arguments */
     init_xdd_conf(&conf);
@@ -125,13 +127,16 @@ int main(int argc, char** argv)
     }
 
     if (conf.write_pid_file) {
-        FILE* pidf = fopen(conf.pid_file, "w");
-        fprintf(pidf, "%d", getpid());
-        fclose(pidf);
+        pidf = fopen(conf.pid_file, "w");
     }
 
     if (conf.daemonize) {
         daemon(0, 0);
+    }
+
+    if (conf.write_pid_file) {
+        fprintf(pidf, "%d", getpid());
+        fclose(pidf);
     }
 
 
