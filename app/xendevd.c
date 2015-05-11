@@ -95,6 +95,43 @@ static void print_usage(char* cmd)
     printf("      --pid-file <file>  Write process pid to file [default: /var/run/xendevd.pid]\n");
 }
 
+static void do_vif_hotplug(struct xs_handle* xs, struct udev_device* dev)
+{
+    enum operation op;
+    const char* vif = NULL;
+    const char* bridge = NULL;
+    const char* xb_path = NULL;
+    const char* action = NULL;
+
+    vif = udev_device_get_property_value(dev, "vif");
+    xb_path = udev_device_get_property_value(dev, "XENBUS_PATH");
+    action = udev_device_get_action(dev);
+
+    if (strcmp(action, "online") == 0) {
+        op = ONLINE;
+    } else if (strcmp(action, "offline") == 0) {
+        op = OFFLINE;
+    } else {
+        return;
+    }
+
+    bridge = xs_read_k(xs, xb_path, "bridge");
+    if (bridge == NULL) {
+        xs_write_k(xs, "Unable to read bridge from xenstore", xb_path, "hotplug-error");
+        xs_write_k(xs, "error", xb_path, "hotplug-status");
+        return;
+    }
+
+    switch (op) {
+        case ONLINE:
+            vif_hotplug_online(xs, xb_path, bridge, vif);
+            break;
+        case OFFLINE:
+            vif_hotplug_offline(xs, xb_path, bridge, vif);
+            break;
+    }
+}
+
 
 int main(int argc, char** argv)
 {
@@ -104,12 +141,6 @@ int main(int argc, char** argv)
     struct udev_device *dev = NULL;
 
     struct xs_handle *xs = NULL;
-
-    enum operation op;
-    const char* vif = NULL;
-    const char* bridge = NULL;
-    const char* xb_path = NULL;
-    const char* action = NULL;
 
     int err;
     struct xdd_conf conf;
@@ -161,39 +192,10 @@ int main(int argc, char** argv)
         dev = udev_monitor_receive_device(mon);
 
         if (dev) {
-            if (strncmp(udev_device_get_sysname(dev), "vif-", 4) != 0) {
-                goto out;
+            if (strncmp(udev_device_get_sysname(dev), "vif-", 4) == 0) {
+                do_vif_hotplug(xs, dev);
             }
 
-            vif = udev_device_get_property_value(dev, "vif");
-            xb_path = udev_device_get_property_value(dev, "XENBUS_PATH");
-            action = udev_device_get_action(dev);
-
-            if (strcmp(action, "online") == 0) {
-                op = ONLINE;
-            } else if (strcmp(action, "offline") == 0) {
-                op = OFFLINE;
-            } else {
-                goto out;
-            }
-
-            bridge = xs_read_k(xs, xb_path, "bridge");
-            if (bridge == NULL) {
-                xs_write_k(xs, "Unable to read bridge from xenstore", xb_path, "hotplug-error");
-                xs_write_k(xs, "error", xb_path, "hotplug-status");
-                goto out;
-            }
-
-            switch (op) {
-                case ONLINE:
-                    vif_hotplug_online(xs, xb_path, bridge, vif);
-                    break;
-                case OFFLINE:
-                    vif_hotplug_offline(xs, xb_path, bridge, vif);
-                    break;
-            }
-
-out:
             udev_device_unref(dev);
         }
     }
