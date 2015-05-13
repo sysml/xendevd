@@ -1,5 +1,6 @@
 #include <xdd/bridge.h>
 #include <xdd/iface.h>
+#include <xdd/vbd.h>
 #include <xdd/vif.h>
 #include <xdd/xs_helper.h>
 
@@ -132,6 +133,47 @@ static void do_vif_hotplug(struct xs_handle* xs, struct udev_device* dev)
     }
 }
 
+static void do_vbd_hotplug(struct xs_handle* xs, struct udev_device* dev)
+{
+    enum operation op;
+    char* device = NULL;
+    char* type = NULL;
+    const char* xb_path = NULL;
+    const char* action = NULL;
+
+    xb_path = udev_device_get_property_value(dev, "XENBUS_PATH");
+    action = udev_device_get_action(dev);
+
+    if (strcmp(action, "add") == 0) {
+        op = ONLINE;
+    } else {
+        return;
+    }
+
+    device = xs_read_k(xs, xb_path, "params");
+    if (device == NULL) {
+        return;
+    }
+
+    type = xs_read_k(xs, xb_path, "type");
+    if (type == NULL) {
+        return;
+    }
+
+    switch (op) {
+        case ONLINE:
+            if (strcmp(type, "phy") == 0) {
+                vbd_phy_hotplug_online(xs, xb_path, device);
+            }
+            break;
+        case OFFLINE:
+            break;
+    }
+
+    free(device);
+    free(type);
+}
+
 
 int main(int argc, char** argv)
 {
@@ -194,6 +236,8 @@ int main(int argc, char** argv)
         if (dev) {
             if (strncmp(udev_device_get_sysname(dev), "vif-", 4) == 0) {
                 do_vif_hotplug(xs, dev);
+            } else if (strncmp(udev_device_get_sysname(dev), "vbd", 3) == 0) {
+                do_vbd_hotplug(xs, dev);
             }
 
             udev_device_unref(dev);
