@@ -99,8 +99,8 @@ static void print_usage(char* cmd)
 static void do_vif_hotplug(struct xs_handle* xs, struct udev_device* dev)
 {
     enum operation op;
+    char* bridge = NULL;
     const char* vif = NULL;
-    const char* bridge = NULL;
     const char* xb_path = NULL;
     const char* action = NULL;
 
@@ -131,6 +131,8 @@ static void do_vif_hotplug(struct xs_handle* xs, struct udev_device* dev)
             vif_hotplug_offline(xs, xb_path, bridge, vif);
             break;
     }
+
+    free(bridge);
 }
 
 static void do_vbd_hotplug(struct xs_handle* xs, struct udev_device* dev)
