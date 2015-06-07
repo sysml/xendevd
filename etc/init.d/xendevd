@@ -22,7 +22,7 @@ DAEMON_ARGS="--pid-file $PIDFILE -D"
 
 do_start()
 {
-    PID=`pidof $NAME`
+    PID=`pidof -o $$ $NAME`
     if [ $? -eq 0 ]
     then
         echo "Daemon is already running"
@@ -41,7 +41,7 @@ do_start()
 
 do_stop()
 {
-    PID=`pidof $NAME`
+    PID=`pidof -o $$ $NAME`
     if [ $? -ne 0 ]
     then
         echo "Daemon is not running"
@@ -61,7 +61,7 @@ do_stop()
 
 do_status()
 {
-    PID=`pidof $NAME`
+    PID=`pidof -o $$ $NAME`
     if [ $? -eq 0 ]
     then
         echo "Daemon is running with pid $PID"
