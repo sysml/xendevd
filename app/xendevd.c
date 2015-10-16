@@ -236,9 +236,11 @@ int main(int argc, char** argv)
         dev = udev_monitor_receive_device(mon);
 
         if (dev) {
-            if (strncmp(udev_device_get_sysname(dev), "vif-", 4) == 0) {
+            const char* sysname = udev_device_get_sysname(dev);
+
+            if (strncmp(sysname, "vif-", 4) == 0) {
                 do_vif_hotplug(xs, dev);
-            } else if (strncmp(udev_device_get_sysname(dev), "vbd", 3) == 0) {
+            } else if (strncmp(sysname, "vbd", 3) == 0) {
                 do_vbd_hotplug(xs, dev);
             }
 
