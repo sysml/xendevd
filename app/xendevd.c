@@ -206,7 +206,11 @@ int main(int argc, char** argv)
     }
 
     if (conf.daemonize) {
-        daemon(0, 0);
+        err = daemon(0, 0);
+        if (err) {
+            printf("Cannot daemonize.");
+            return err;
+        }
     }
 
     if (conf.write_pid_file) {
