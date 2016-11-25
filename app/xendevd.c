@@ -34,11 +34,8 @@
  * THIS HEADER MAY NOT BE EXTRACTED OR MODIFIED IN ANY WAY.
  */
 
-#include <xdd/bridge.h>
-#include <xdd/iface.h>
 #include <xdd/vbd.h>
 #include <xdd/vif.h>
-#include <xdd/xs_helper.h>
 
 #include <fcntl.h>
 #include <libudev.h>
@@ -135,13 +132,10 @@ static void print_usage(char* cmd)
 static void do_vif_hotplug(struct xs_handle* xs, struct udev_device* dev)
 {
     enum operation op;
-    char* bridge = NULL;
     const char* vif = NULL;
-    const char* xb_path = NULL;
     const char* action = NULL;
+    const char* xb_path = NULL;
 
-    vif = udev_device_get_property_value(dev, "vif");
-    xb_path = udev_device_get_property_value(dev, "XENBUS_PATH");
     action = udev_device_get_action(dev);
 
     if (strcmp(action, "online") == 0) {
@@ -152,34 +146,25 @@ static void do_vif_hotplug(struct xs_handle* xs, struct udev_device* dev)
         return;
     }
 
-    bridge = xs_read_k(xs, xb_path, "bridge");
-    if (bridge == NULL) {
-        xs_write_k(xs, "Unable to read bridge from xenstore", xb_path, "hotplug-error");
-        xs_write_k(xs, "error", xb_path, "hotplug-status");
-        return;
-    }
+    xb_path = udev_device_get_property_value(dev, "XENBUS_PATH");
+    vif = udev_device_get_property_value(dev, "vif");
 
     switch (op) {
         case ONLINE:
-            vif_hotplug_online(xs, xb_path, bridge, vif);
+            vif_hotplug_online_xs(xs, xb_path, vif);
             break;
         case OFFLINE:
-            vif_hotplug_offline(xs, xb_path, bridge, vif);
+            vif_hotplug_offline_xs(xs, xb_path, vif);
             break;
     }
-
-    free(bridge);
 }
 
 static void do_vbd_hotplug(struct xs_handle* xs, struct udev_device* dev)
 {
     enum operation op;
-    char* device = NULL;
-    char* type = NULL;
     const char* xb_path = NULL;
     const char* action = NULL;
 
-    xb_path = udev_device_get_property_value(dev, "XENBUS_PATH");
     action = udev_device_get_action(dev);
 
     if (strcmp(action, "add") == 0) {
@@ -188,28 +173,15 @@ static void do_vbd_hotplug(struct xs_handle* xs, struct udev_device* dev)
         return;
     }
 
-    device = xs_read_k(xs, xb_path, "params");
-    if (device == NULL) {
-        return;
-    }
-
-    type = xs_read_k(xs, xb_path, "type");
-    if (type == NULL) {
-        return;
-    }
+    xb_path = udev_device_get_property_value(dev, "XENBUS_PATH");
 
     switch (op) {
         case ONLINE:
-            if (strcmp(type, "phy") == 0) {
-                vbd_phy_hotplug_online(xs, xb_path, device);
-            }
+            vbd_hotplug_online_xs(xs, xb_path);
             break;
         case OFFLINE:
             break;
     }
-
-    free(device);
-    free(type);
 }
 
 

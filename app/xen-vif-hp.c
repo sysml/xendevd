@@ -34,9 +34,7 @@
  * THIS HEADER MAY NOT BE EXTRACTED OR MODIFIED IN ANY WAY.
  */
 
-#include <xdd/bridge.h>
 #include <xdd/vif.h>
-#include <xdd/xs_helper.h>
 
 #include <errno.h>
 #include <stdio.h>
@@ -60,7 +58,6 @@ int main(int argc, char** argv)
 {
     enum operation op;
     char* vif = NULL;
-    char* bridge = NULL;
     char* xb_path = NULL;
 
     struct xs_handle *xs = NULL;
@@ -102,27 +99,16 @@ int main(int argc, char** argv)
         goto out;
     }
 
-    bridge = xs_read_k(xs, xb_path, "bridge");
-    if (bridge == NULL) {
-        xs_write_k(xs, "Unable to read bridge from xenstore", xb_path, "hotplug-error");
-        xs_write_k(xs, "error", xb_path, "hotplug-status");
-        goto out;
-    }
-
     switch (op) {
         case ONLINE:
-            errno = vif_hotplug_online(xs, xb_path, bridge, vif);
+            errno = vif_hotplug_online_xs(xs, xb_path, vif);
             break;
         case OFFLINE:
-            errno = vif_hotplug_offline(xs, xb_path, bridge, vif);
+            errno = vif_hotplug_offline_xs(xs, xb_path, vif);
             break;
     }
 
 out:
-    if (bridge) {
-        free(bridge);
-    }
-
     if (xs) {
         xs_close(xs);
     }

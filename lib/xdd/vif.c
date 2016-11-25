@@ -39,43 +39,80 @@
 #include <xdd/vif.h>
 #include <xdd/xs_helper.h>
 
+#include <stdlib.h>
 
-int vif_hotplug_online(struct xs_handle* xs, const char* xb_path, const char* bridge, const char* vif)
+
+int vif_hotplug_online_xs(struct xs_handle* xs, const char* xb_path, const char* vif)
 {
-    errno = bridge_add_if(bridge, vif);
-    if (errno) {
+    int ret = 0;
+    char* bridge = NULL;
+    char* err_str = NULL;
+
+    bridge = xs_read_k(xs, xb_path, "bridge");
+    if (bridge == NULL) {
+        ret = EINVAL;
+        err_str = "Unable to read bridge from xenstore";
         goto out_err;
     }
 
-    errno = iface_set_up(vif);
-    if (errno) {
+    ret = bridge_add_if(bridge, vif);
+    if (ret) {
+        err_str = "Fail to add interface to bridge";
+        goto out_err;
+    }
+
+    ret = iface_set_up(vif);
+    if (ret) {
+        err_str = "Fail to set interface up";
         goto out_err;
     }
 
     xs_write_k(xs, "connected", xb_path, "hotplug-status");
 
-    goto out;
+    free(bridge);
+
+    return 0;
 
 out_err:
-    /* FIXME: provide an error description */
-    xs_write_k(xs, "failure", xb_path, "hotplug-error");
+    if (bridge) {
+        free(bridge);
+    }
+
+    xs_write_k(xs, err_str, xb_path, "hotplug-error");
     xs_write_k(xs, "error", xb_path, "hotplug-status");
 
-out:
-    return 0;
+    return ret;
 }
 
-int vif_hotplug_offline(struct xs_handle* xs, const char* xb_path, const char* bridge, const char* vif)
+int vif_hotplug_offline_xs(struct xs_handle* xs, const char* xb_path, const char* vif)
 {
-    errno = iface_set_down(vif);
-    if (errno) {
-        return errno;
+    int ret = 0;
+    char* bridge = NULL;
+
+    bridge = xs_read_k(xs, xb_path, "bridge");
+    if (bridge == NULL) {
+        ret = EINVAL;
+        goto out_err;
     }
 
-    errno = bridge_rem_if(bridge, vif);
-    if (errno) {
-        return errno;
+    ret = iface_set_down(vif);
+    if (ret) {
+        goto out_err;
     }
+
+    ret = bridge_rem_if(bridge, vif);
+    if (ret) {
+        goto out_err;
+    }
+
+    free(bridge);
 
     return 0;
+
+out_err:
+    if (bridge) {
+        free(bridge);
+    }
+
+    return ret;
 }
