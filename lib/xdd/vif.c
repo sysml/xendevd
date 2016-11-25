@@ -116,3 +116,43 @@ out_err:
 
     return ret;
 }
+
+int vif_hotplug_online_noxs(const char* vif, const char* bridge)
+{
+    int ret;
+
+    ret = bridge_add_if(bridge, vif);
+    if (ret) {
+        goto out_err;
+    }
+
+    ret = iface_set_up(vif);
+    if (ret) {
+        goto out_err;
+    }
+
+    return 0;
+
+out_err:
+    return ret;
+}
+
+int vif_hotplug_offline_noxs(const char* vif, const char* bridge)
+{
+    int ret;
+
+    ret = iface_set_down(vif);
+    if (ret) {
+        goto out_err;
+    }
+
+    ret = bridge_rem_if(bridge, vif);
+    if (ret) {
+        goto out_err;
+    }
+
+    return 0;
+
+out_err:
+    return ret;
+}

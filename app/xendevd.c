@@ -55,6 +55,7 @@ enum action {
 
 enum backend {
     BE_XS ,
+    BE_NOXS ,
 };
 
 enum device_type {
@@ -194,6 +195,30 @@ static void do_hotplug(struct opinfo* op, struct udev_device* dev, struct xs_han
                 } break;
             }
             break;
+
+        case BE_NOXS:
+            switch (op->dev_t) {
+                case DEV_T_VIF: {
+                    const char* vif = udev_device_get_property_value(dev, "vif");
+                    const char* bridge = udev_device_get_property_value(dev, "bridge");
+
+                    switch (op->act) {
+                        case ACT_ONLINE:
+                            vif_hotplug_online_noxs(vif, bridge);
+                            break;
+
+                        case ACT_OFFLINE:
+                            vif_hotplug_online_noxs(vif, bridge);
+                            break;
+
+                        default:
+                            break;
+                    }
+                } break;
+
+                default:
+                    break;
+            }
     }
 }
 
@@ -245,6 +270,7 @@ int main(int argc, char** argv)
     mon = udev_monitor_new_from_netlink(udev, "kernel");
 
     udev_monitor_filter_add_match_subsystem_devtype(mon, "xen-backend", NULL);
+    udev_monitor_filter_add_match_subsystem_devtype(mon, "xen-backend-noxs", NULL);
 
     udev_monitor_enable_receiving(mon);
 
@@ -278,6 +304,8 @@ int main(int argc, char** argv)
 
             if (strcmp(subsystem, "xen-backend") == 0) {
                 op.be = BE_XS;
+            } else if (strcmp(subsystem, "xen-backend-noxs") == 0) {
+                op.be = BE_NOXS;
             } else {
                 goto out;
             }
