@@ -47,9 +47,37 @@
 #include <xenstore.h>
 
 
-enum operation {
-    ONLINE  ,
-    OFFLINE ,
+enum action {
+    ACT_ADD ,
+    ACT_ONLINE ,
+    ACT_OFFLINE ,
+};
+
+enum backend {
+    BE_XS ,
+};
+
+enum device_type {
+    DEV_T_VIF ,
+    DEV_T_VBD ,
+};
+
+struct opinfo {
+    enum action act;
+    enum backend be;
+
+    enum device_type dev_t;
+    union {
+        struct {
+            const char* xb_path;
+            const char* dev_name;
+            const char* bridge;
+        } vif;
+
+        struct {
+            const char* xb_path;
+        } vbd;
+    } dev_info;
 };
 
 struct xdd_conf {
@@ -129,57 +157,42 @@ static void print_usage(char* cmd)
     printf("      --pid-file <file>  Write process pid to file [default: /var/run/xendevd.pid]\n");
 }
 
-static void do_vif_hotplug(struct xs_handle* xs, struct udev_device* dev)
+static void do_hotplug(struct opinfo* op, struct udev_device* dev, struct xs_handle* xs)
 {
-    enum operation op;
-    const char* vif = NULL;
-    const char* action = NULL;
-    const char* xb_path = NULL;
+    switch (op->be) {
+        case BE_XS:
+            switch (op->dev_t) {
+                case DEV_T_VIF: {
+                    const char* xb_path = udev_device_get_property_value(dev, "XENBUS_PATH");
+                    const char* vif = udev_device_get_property_value(dev, "vif");
 
-    action = udev_device_get_action(dev);
+                    switch (op->act) {
+                        case ACT_ONLINE:
+                            vif_hotplug_online_xs(xs, xb_path, vif);
+                            break;
 
-    if (strcmp(action, "online") == 0) {
-        op = ONLINE;
-    } else if (strcmp(action, "offline") == 0) {
-        op = OFFLINE;
-    } else {
-        return;
-    }
+                        case ACT_OFFLINE:
+                            vif_hotplug_online_xs(xs, xb_path, vif);
+                            break;
 
-    xb_path = udev_device_get_property_value(dev, "XENBUS_PATH");
-    vif = udev_device_get_property_value(dev, "vif");
+                        default:
+                            break;
+                    }
+                } break;
 
-    switch (op) {
-        case ONLINE:
-            vif_hotplug_online_xs(xs, xb_path, vif);
-            break;
-        case OFFLINE:
-            vif_hotplug_offline_xs(xs, xb_path, vif);
-            break;
-    }
-}
+                case DEV_T_VBD: {
+                    const char* xb_path = udev_device_get_property_value(dev, "XENBUS_PATH");
 
-static void do_vbd_hotplug(struct xs_handle* xs, struct udev_device* dev)
-{
-    enum operation op;
-    const char* xb_path = NULL;
-    const char* action = NULL;
+                    switch (op->act) {
+                        case ACT_ADD:
+                            vbd_hotplug_online_xs(xs, xb_path);
+                            break;
 
-    action = udev_device_get_action(dev);
-
-    if (strcmp(action, "add") == 0) {
-        op = ONLINE;
-    } else {
-        return;
-    }
-
-    xb_path = udev_device_get_property_value(dev, "XENBUS_PATH");
-
-    switch (op) {
-        case ONLINE:
-            vbd_hotplug_online_xs(xs, xb_path);
-            break;
-        case OFFLINE:
+                        default:
+                            break;
+                    }
+                } break;
+            }
             break;
     }
 }
@@ -248,14 +261,38 @@ int main(int argc, char** argv)
         dev = udev_monitor_receive_device(mon);
 
         if (dev) {
+            struct opinfo op;
+            const char* action = udev_device_get_action(dev);
             const char* sysname = udev_device_get_sysname(dev);
+            const char* subsystem = udev_device_get_subsystem(dev);
 
-            if (strncmp(sysname, "vif-", 4) == 0) {
-                do_vif_hotplug(xs, dev);
-            } else if (strncmp(sysname, "vbd", 3) == 0) {
-                do_vbd_hotplug(xs, dev);
+            if (strcmp(action, "add") == 0) {
+                op.act = ACT_ADD;
+            } else if (strcmp(action, "online") == 0) {
+                op.act = ACT_ONLINE;
+            } else if (strcmp(action, "offline") == 0) {
+                op.act = ACT_OFFLINE;
+            } else {
+                goto out;
             }
 
+            if (strcmp(subsystem, "xen-backend") == 0) {
+                op.be = BE_XS;
+            } else {
+                goto out;
+            }
+
+            if (strncmp(sysname, "vif-", 4) == 0) {
+                op.dev_t = DEV_T_VIF;
+            } else if (strncmp(sysname, "vbd", 3) == 0) {
+                op.dev_t = DEV_T_VBD;
+            } else {
+                goto out;
+            }
+
+            do_hotplug(&op, dev, xs);
+
+out:
             udev_device_unref(dev);
         }
     }
