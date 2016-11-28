@@ -245,7 +245,7 @@ int main(int argc, char** argv)
     err = parse_args(argc, argv, &conf);
     if (err || conf.help) {
         print_usage(argv[0]);
-        return err ? 1 : 0;
+        return err ? -EINVAL : 0;
     }
 
     if (conf.write_pid_file) {
