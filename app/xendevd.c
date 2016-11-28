@@ -40,6 +40,7 @@
 #include <fcntl.h>
 #include <libudev.h>
 #include <getopt.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -82,17 +83,17 @@ struct opinfo {
 };
 
 struct xdd_conf {
-    int help;
-    int daemonize;
-    int write_pid_file;
+    bool help;
+    bool daemonize;
+    bool write_pid_file;
     char* pid_file;
 };
 
 static void init_xdd_conf(struct xdd_conf* conf)
 {
-    conf->help = 0;
-    conf->daemonize = 0;
-    conf->write_pid_file = 0;
+    conf->help = false;
+    conf->daemonize = false;
+    conf->write_pid_file = false;
     conf->pid_file = "/var/run/xendevd.pid";
 }
 
@@ -119,21 +120,21 @@ static int parse_args(int argc, char** argv, struct xdd_conf* conf)
 
         switch (opt) {
             case 'h':
-                conf->help = 1;
+                conf->help = true;
                 break;
 
             case 'D':
-                conf->daemonize = 1;
-                conf->write_pid_file = 1;
+                conf->daemonize = true;
+                conf->write_pid_file = true;
                 break;
 
             case 'p':
-                conf->write_pid_file = 1;
+                conf->write_pid_file = true;
                 conf->pid_file = optarg;
                 break;
 
             default:
-                error = 1;
+                error = true;
                 break;
         }
     }
