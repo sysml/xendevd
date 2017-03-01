@@ -34,6 +34,7 @@
  * THIS HEADER MAY NOT BE EXTRACTED OR MODIFIED IN ANY WAY.
  */
 
+#include <xdd/loop.h>
 #include <xdd/vbd.h>
 #include <xdd/vif.h>
 
@@ -159,7 +160,7 @@ static void print_usage(char* cmd)
     printf("      --pid-file <file>  Write process pid to file [default: /var/run/xendevd.pid]\n");
 }
 
-static void do_hotplug(struct opinfo* op, struct udev_device* dev, struct xs_handle* xs)
+static void do_hotplug(struct opinfo* op, struct udev_device* dev, struct xs_handle* xs, struct xdd_loop_ctrl_handle* loop_ctrl)
 {
     switch (op->be) {
         case BE_XS:
@@ -187,7 +188,11 @@ static void do_hotplug(struct opinfo* op, struct udev_device* dev, struct xs_han
 
                     switch (op->act) {
                         case ACT_ADD:
-                            vbd_hotplug_online_xs(xs, xb_path);
+                            vbd_hotplug_online_xs(loop_ctrl, xs, xb_path);
+                            break;
+
+                        case ACT_OFFLINE:
+                            vbd_hotplug_offline_xs(xs, xb_path);
                             break;
 
                         default:
@@ -235,6 +240,7 @@ int main(int argc, char** argv)
 
     int err;
     struct xdd_conf conf;
+    struct xdd_loop_ctrl_handle loop_ctrl;
 
     FILE* pidf = NULL;
 
@@ -265,6 +271,8 @@ int main(int argc, char** argv)
         fclose(pidf);
     }
 
+    /* setup interface to loop device control */
+    loop_ctrl_open(&loop_ctrl);
 
     /* setup udev */
     udev = udev_new();
@@ -319,7 +327,7 @@ int main(int argc, char** argv)
                 goto out;
             }
 
-            do_hotplug(&op, dev, xs);
+            do_hotplug(&op, dev, xs, &loop_ctrl);
 
 out:
             udev_device_unref(dev);

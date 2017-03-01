@@ -37,12 +37,15 @@
 #ifndef __XDD__VBD__HH__
 #define __XDD__VBD__HH__
 
+#include <xdd/loop.h>
+
 #define _GNU_SOURCE
 
 #include <stddef.h>
 #include <xenstore.h>
 
 
-int vbd_hotplug_online_xs(struct xs_handle* xs, const char* xb_path);
+int vbd_hotplug_online_xs(struct xdd_loop_ctrl_handle* loop_ctrl, struct xs_handle* xs, const char* xb_path);
+int vbd_hotplug_offline_xs(struct xs_handle* xs, const char* xb_path);
 
 #endif /* __XDD_VBD_HH__ */
