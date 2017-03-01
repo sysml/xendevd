@@ -174,7 +174,7 @@ static void do_hotplug(struct opinfo* op, struct udev_device* dev, struct xs_han
                             break;
 
                         case ACT_OFFLINE:
-                            vif_hotplug_online_xs(xs, xb_path, vif);
+                            vif_hotplug_offline_xs(xs, xb_path, vif);
                             break;
 
                         default:
@@ -209,7 +209,7 @@ static void do_hotplug(struct opinfo* op, struct udev_device* dev, struct xs_han
                             break;
 
                         case ACT_OFFLINE:
-                            vif_hotplug_online_noxs(vif, bridge);
+                            vif_hotplug_offline_noxs(vif, bridge);
                             break;
 
                         default:
