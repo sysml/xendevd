@@ -51,6 +51,7 @@
 
 enum action {
     ACT_ADD ,
+    ACT_REMOVE ,
     ACT_ONLINE ,
     ACT_OFFLINE ,
 };
@@ -191,7 +192,7 @@ static void do_hotplug(struct opinfo* op, struct udev_device* dev, struct xs_han
                             vbd_hotplug_online_xs(loop_ctrl, xs, xb_path);
                             break;
 
-                        case ACT_OFFLINE:
+                        case ACT_REMOVE:
                             vbd_hotplug_offline_xs(xs, xb_path);
                             break;
 
