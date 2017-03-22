@@ -37,6 +37,7 @@
 #include <xdd/loop.h>
 #include <xdd/vbd.h>
 #include <xdd/vif.h>
+#include <xddconn/if.h>
 
 #include <fcntl.h>
 #include <libudev.h>
@@ -46,6 +47,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <poll.h>
 #include <xenstore.h>
 
 
@@ -223,6 +227,19 @@ static void do_hotplug(struct opinfo* op, struct udev_device* dev, struct xs_han
                     }
                 } break;
 
+                case DEV_T_VBD: {
+                    switch (op->act) {
+                        case ACT_ADD:
+                            break;
+
+                        case ACT_REMOVE:
+                            break;
+
+                        default:
+                            break;
+                    }
+                } break;
+
                 default:
                     break;
             }
@@ -230,13 +247,287 @@ static void do_hotplug(struct opinfo* op, struct udev_device* dev, struct xs_han
 }
 
 
-int main(int argc, char** argv)
+struct udev_if {
+    struct udev_monitor* mon;
+    int fd;
+};
+
+static int udev_if_init(struct udev_if* udev_if)
 {
+    int ret;
     int fd = -1;
     struct udev* udev = NULL;
     struct udev_monitor* mon = NULL;
-    struct udev_device *dev = NULL;
 
+    ret = 0;
+
+    udev = udev_new();
+    if (udev == NULL) {
+        ret = errno;
+        goto out_err;
+    }
+
+    mon = udev_monitor_new_from_netlink(udev, "kernel");
+    if (mon == NULL) {
+        ret = errno;
+        goto out_err;
+    }
+
+    ret = udev_monitor_filter_add_match_subsystem_devtype(mon, "xen-backend", NULL);
+    if (ret) {
+        ret = errno;
+        goto out_err;
+    }
+
+    ret = udev_monitor_filter_add_match_subsystem_devtype(mon, "xen-backend-noxs", NULL);
+    if (ret) {
+        ret = errno;
+        goto out_err;
+    }
+
+    ret = udev_monitor_enable_receiving(mon);
+    if (ret) {
+        ret = errno;
+        goto out_err;
+    }
+
+    fd = udev_monitor_get_fd(mon);
+    if (fd < 0) {
+        ret = errno;
+        goto out_err;
+    }
+
+    ret = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) & ~O_NONBLOCK);
+    if (ret) {
+        ret = errno;
+        goto out_err;
+    }
+
+    udev_if->mon = mon;
+    udev_if->fd = fd;
+
+    return 0;
+
+out_err:
+    if (udev) {
+        udev_unref(udev);
+    }
+    if (mon) {
+        udev_monitor_unref(mon);
+    }
+    return ret;
+}
+
+static void udev_if_event(struct udev_if* udev_if, struct xs_handle* xs,
+        struct xdd_loop_ctrl_handle* loop_ctrl)
+{
+    struct udev_device* dev;
+
+    dev = udev_monitor_receive_device(udev_if->mon);
+
+    if (dev) {
+        struct opinfo op;
+        const char* action = udev_device_get_action(dev);
+        const char* sysname = udev_device_get_sysname(dev);
+        const char* subsystem = udev_device_get_subsystem(dev);
+
+        if (strcmp(action, "add") == 0) {
+            op.act = ACT_ADD;
+        } else if (strcmp(action, "remove") == 0) {
+            op.act = ACT_REMOVE;
+        } else if (strcmp(action, "online") == 0) {
+            op.act = ACT_ONLINE;
+        } else if (strcmp(action, "offline") == 0) {
+            op.act = ACT_OFFLINE;
+        } else {
+            goto out;
+        }
+
+        if (strcmp(subsystem, "xen-backend") == 0) {
+            op.be = BE_XS;
+        } else if (strcmp(subsystem, "xen-backend-noxs") == 0) {
+            op.be = BE_NOXS;
+        } else {
+            goto out;
+        }
+
+        if (strncmp(sysname, "vif-", 4) == 0) {
+            op.dev_t = DEV_T_VIF;
+        } else if (strncmp(sysname, "vbd", 3) == 0) {
+            op.dev_t = DEV_T_VBD;
+        } else {
+            goto out;
+        }
+
+        do_hotplug(&op, dev, xs, loop_ctrl);
+
+out:
+        udev_device_unref(dev);
+    }
+}
+
+static int udev_if_get_device_name(struct udev_if* udev_if,
+        int major, int minor, char** out_devname)
+{
+    int ret;
+    struct udev *udev;
+    struct udev_device *device;
+    const char* devname;
+
+    ret = 0;
+
+    udev = udev_monitor_get_udev(udev_if->mon);
+    if (udev == NULL) {
+        ret = errno;
+        goto out_ret;
+    }
+
+    device = udev_device_new_from_devnum(udev, 'b', makedev(major, minor));
+    if (device == NULL) {
+        ret = errno;
+        goto out_ret;
+    }
+
+    devname = udev_device_get_property_value(device, "DEVNAME");
+    if (devname == NULL) {
+        ret = errno;
+        goto out_unref;
+    }
+
+    *out_devname = strdup(devname);
+
+out_unref:
+    udev_device_unref(device);
+out_ret:
+    return ret;
+}
+
+static int xdd_blk_op(struct xdd_devreq* req, struct xdd_devrsp* rsp,
+        struct udev_if* udev_if, struct xdd_loop_ctrl_handle* loop_ctrl)
+{
+    int ret;
+    struct xdd_blk_devreq* blk_req = req->blk;
+    struct xdd_blk_devrsp* blk_rsp = NULL;
+    char* devname = NULL;
+    int payload_len = 0;
+
+    if (req->hdr.req_type == dev_cmd_add) {
+        payload_len = sizeof(blk_rsp->add);
+
+        blk_rsp = malloc(payload_len);
+        if (blk_rsp == NULL) {
+            payload_len = 0;
+            ret = errno;
+            goto out;
+        }
+
+        ret = vbd_hotplug_online_noxs(loop_ctrl,
+                blk_req->add.filename, blk_req->add.type, blk_req->add.mode,
+                &blk_rsp->add.major, &blk_rsp->add.minor);
+
+        if (ret) {
+            free(blk_rsp);
+            blk_rsp = NULL;
+            payload_len = 0;
+        }
+
+    } else if (req->hdr.req_type == dev_cmd_remove) {
+        ret = udev_if_get_device_name(udev_if,
+                blk_req->remove.major, blk_req->remove.minor, &devname);
+
+        if (ret == 0) {
+            ret = vbd_hotplug_offline_noxs(devname, blk_req->remove.type);
+        }
+
+    } else if (req->hdr.req_type == dev_cmd_query) {
+        char* backed = NULL;
+        const char* filename;
+
+        ret = udev_if_get_device_name(udev_if,
+                blk_req->query.major, blk_req->query.minor, &devname);
+        if (ret) {
+            goto out;
+        }
+
+        ret = vbd_backed_file(devname, blk_req->query.type, &backed);
+        if (ret) {
+            goto out_free_query;
+        }
+
+        if (backed) {
+            filename = backed;
+        } else {
+            filename = devname;
+        }
+
+        payload_len = sizeof(blk_rsp->query) + strlen(filename) + 1;
+
+        blk_rsp = malloc(payload_len);
+        if (blk_rsp == NULL) {
+            payload_len = 0;
+            ret = errno;
+            goto out_free_query;
+        }
+
+        strcpy(blk_rsp->query.filename, filename);
+
+out_free_query:
+        if (backed) {
+            free(backed);
+        }
+
+    } else {
+        ret = EINVAL;
+        goto out;
+    }
+
+out:
+    rsp->hdr.error = ret;
+    rsp->hdr.payload_len = payload_len;
+    rsp->payload = blk_rsp;
+
+    if (devname) {
+        free(devname);
+    }
+
+    return ret;
+}
+
+static int xddconn_message(struct xddconn_server* xddconn,
+        struct udev_if* udev_if, struct xdd_loop_ctrl_handle* loop_ctrl)
+{
+    int ret;
+    struct xddconn_session session;
+
+    ret = xddconn_server_recv_request(xddconn, &session);
+    if (ret) {
+        ret = errno;
+        goto out_ret;
+    }
+
+    if (session.req.hdr.dev_type == dev_blk) {
+        xdd_blk_op(&session.req, &session.rsp, udev_if, loop_ctrl);
+
+    } else {
+        session.rsp.hdr.error = EINVAL;
+        session.rsp.hdr.payload_len = 0;
+    }
+
+    ret = xddconn_server_send_response(xddconn, &session);
+    if (ret) {
+        ret = errno;
+        goto out_ret;
+    }
+
+out_ret:
+    return ret;
+}
+
+
+int main(int argc, char** argv)
+{
+    struct udev_if udev_if;
+    struct xddconn_server xddconn;
     struct xs_handle *xs = NULL;
 
     int err;
@@ -273,20 +564,31 @@ int main(int argc, char** argv)
     }
 
     /* setup interface to loop device control */
-    loop_ctrl_open(&loop_ctrl);
+    memset(&loop_ctrl, 0, sizeof(loop_ctrl));
+    err = loop_ctrl_open(&loop_ctrl);
+    if (err) {
+        fprintf(stderr, "Error opening loop device control.");
+        err = errno;
+        goto out_err;
+    }
 
     /* setup udev */
-    udev = udev_new();
-    mon = udev_monitor_new_from_netlink(udev, "kernel");
+    memset(&udev_if, 0, sizeof(udev_if));
+    err = udev_if_init(&udev_if);
+    if (err) {
+        fprintf(stderr, "Error initializing udev interface.");
+        err = errno;
+        goto out_err;
+    }
 
-    udev_monitor_filter_add_match_subsystem_devtype(mon, "xen-backend", NULL);
-    udev_monitor_filter_add_match_subsystem_devtype(mon, "xen-backend-noxs", NULL);
-
-    udev_monitor_enable_receiving(mon);
-
-    fd = udev_monitor_get_fd(mon);
-    fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) & ~O_NONBLOCK);
-
+    /* setup toolstack connection */
+    memset(&xddconn, 0, sizeof(xddconn));
+    err = xddconn_server_open(&xddconn);
+    if (err) {
+        fprintf(stderr, "Error opening xdd connection.");
+        err = errno;
+        goto out_err;
+    }
 
     /* setup xenstore */
     xs = xs_open(0);
@@ -294,46 +596,28 @@ int main(int argc, char** argv)
 
     /*  main loop */
     while (1) {
-        dev = udev_monitor_receive_device(mon);
+        struct pollfd fds[2];
 
-        if (dev) {
-            struct opinfo op;
-            const char* action = udev_device_get_action(dev);
-            const char* sysname = udev_device_get_sysname(dev);
-            const char* subsystem = udev_device_get_subsystem(dev);
+        fds[0].fd = udev_if.fd;
+        fds[1].fd = xddconn.listenfd;
+        fds[0].events = POLLIN | POLLPRI;
+        fds[1].events = POLLIN | POLLPRI;
 
-            if (strcmp(action, "add") == 0) {
-                op.act = ACT_ADD;
-            } else if (strcmp(action, "online") == 0) {
-                op.act = ACT_ONLINE;
-            } else if (strcmp(action, "offline") == 0) {
-                op.act = ACT_OFFLINE;
-            } else {
-                goto out;
-            }
+        err = poll(fds, 2, -1);
 
-            if (strcmp(subsystem, "xen-backend") == 0) {
-                op.be = BE_XS;
-            } else if (strcmp(subsystem, "xen-backend-noxs") == 0) {
-                op.be = BE_NOXS;
-            } else {
-                goto out;
-            }
+        if (fds[0].revents & POLLIN) {
+            udev_if_event(&udev_if, xs, &loop_ctrl);
+        }
 
-            if (strncmp(sysname, "vif-", 4) == 0) {
-                op.dev_t = DEV_T_VIF;
-            } else if (strncmp(sysname, "vbd", 3) == 0) {
-                op.dev_t = DEV_T_VBD;
-            } else {
-                goto out;
-            }
-
-            do_hotplug(&op, dev, xs, &loop_ctrl);
-
-out:
-            udev_device_unref(dev);
+        if (fds[1].revents & POLLIN) {
+            xddconn_message(&xddconn, &udev_if, &loop_ctrl);
         }
     }
 
     /* FIXME: remove pid file upon exit*/
+
+    /* FIXME: free udev if, xddconn and xs resources upon exit */
+
+out_err:
+    return err;
 }
