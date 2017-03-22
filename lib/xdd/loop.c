@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/ioctl.h>
+#include <sys/stat.h>
 #include <linux/loop.h>
 #include <errno.h>
 
@@ -150,6 +151,61 @@ int loop_dev_unbind(const char* device)
     }
 
     close(dev_fd);
+out_err:
+    return ret;
+}
+
+int loop_dev_filename(const char* device, char** filename)
+{
+    int ret;
+    int sysfs_fd;
+    struct stat st;
+    char buf[BUFSIZ];
+    char* eol;
+
+    if (device == NULL || filename == NULL) {
+        ret = EINVAL;
+        goto out_err;
+    }
+
+    ret = stat(device, &st);
+    if (ret) {
+        ret = errno;
+        goto out_err;
+    }
+
+    if (!S_ISBLK(st.st_mode)) {
+        ret = EINVAL;
+        goto out_err;
+    }
+
+    /* Reading sysfs value since it can have longer filenames */
+    sprintf(buf, "/sys/dev/block/%d:%d/loop/backing_file",
+            major(st.st_rdev), minor(st.st_rdev));
+
+    sysfs_fd = open(buf, O_RDONLY);
+    if (sysfs_fd < 0) {
+        ret = errno;
+        goto out_err;
+    }
+
+    ret = read(sysfs_fd, buf, BUFSIZ);
+    if (ret < 0) {
+        ret = errno;
+        goto out_close;
+    }
+
+    eol = strchr(buf, '\n');
+    if (eol) {
+        *eol = 0;
+    }
+
+    *filename = strdup(buf);
+
+    ret = 0;
+
+out_close:
+    close(sysfs_fd);
 out_err:
     return ret;
 }

@@ -328,3 +328,140 @@ out_ret:
 
     return ret;
 }
+
+static int vbd_phy_hotplug_online_noxs(const char* device, int* major, int* minor)
+{
+    int ret;
+    struct stat st;
+    char* err_str = NULL;
+
+    ret = check_file_type(device, file_block, &st, &err_str);
+    if (ret) {
+        fprintf(stderr, "%s\n", err_str);
+        free(err_str);
+        goto out_err;
+    }
+
+    /* FIXME: Check device sharing */
+
+    *major = major(st.st_rdev);
+    *minor = minor(st.st_rdev);
+
+    return 0;
+
+out_err:
+    return ret;
+}
+
+static int vbd_file_hotplug_online_noxs(struct xdd_loop_ctrl_handle* loop_ctrl,
+        const char* filename, const char* mode,
+        int* out_major, int* out_minor)
+{
+    int ret;
+    char* device = NULL;
+    char* err_str = NULL;
+
+    ret = check_file_type(filename, file_regular, NULL, &err_str);
+    if (ret) {
+        fprintf(stderr, "%s\n", err_str);
+        free(err_str);
+        goto out_err;
+    }
+
+    ret = loop_ctrl_next_available_dev(loop_ctrl, &device);
+    if (ret) {
+        fprintf(stderr, "Error finding next loop device for %s (%s).\n",
+                filename, strerror(ret));
+        goto out_err;
+    }
+
+    ret = loop_dev_bind(device, filename, mode);
+    if (ret) {
+        fprintf(stderr, "Error binding to loop device for %s (%s).\n",
+                filename, strerror(ret));
+        goto out_device;
+    }
+
+    ret = vbd_phy_hotplug_online_noxs(device, out_major, out_minor);
+    if (ret) {
+        goto out_device;
+    }
+
+out_device:
+    free(device);
+out_err:
+    return ret;
+}
+
+static int vbd_file_hotplug_offline_noxs(const char* device)
+{
+    int ret;
+
+    ret = loop_dev_unbind(device);
+    if (ret) {
+        fprintf(stderr, "Error unbinding loop device %s (%s).\n",
+                device, strerror(ret));
+        goto out_err;
+    }
+
+out_err:
+    return ret;
+}
+
+
+int vbd_hotplug_online_noxs(struct xdd_loop_ctrl_handle* loop_ctrl,
+        const char* params, const char* type, const char* mode,
+        int* out_major, int* out_minor)
+{
+    int ret = 0;
+
+    if (strcmp(type, TYPE_PHYSICAL) == 0) {
+        ret = vbd_phy_hotplug_online_noxs(params, out_major, out_minor);
+
+    } else if (strcmp(type, TYPE_FILE) == 0) {
+        ret = vbd_file_hotplug_online_noxs(loop_ctrl,
+                params, mode, out_major, out_minor);
+    } else {
+        ret = ENOSYS;
+    }
+
+    return ret;
+}
+
+int vbd_hotplug_offline_noxs(const char* device, const char* type)
+{
+    int ret;
+
+    ret = 0;
+
+    if (strcmp(type, TYPE_PHYSICAL) == 0) {
+        /* Nothing */
+
+    } else if (strcmp(type, TYPE_FILE) == 0) {
+        ret = vbd_file_hotplug_offline_noxs(device);
+
+    } else {
+        ret = ENOSYS;
+    }
+
+    return ret;
+}
+
+int vbd_backed_file(const char* device, const char* type, char** backed_filename)
+{
+    int ret;
+
+    if (device == NULL || type == NULL || backed_filename == NULL) {
+        ret = EINVAL;
+        goto out_ret;
+    }
+
+    ret = 0;
+
+    if (strcmp(type, TYPE_FILE) == 0) {
+        ret = loop_dev_filename(device, backed_filename);
+    }
+
+out_ret:
+    return ret;
+}
