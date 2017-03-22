@@ -11,7 +11,7 @@ cxxlink		 = @printf " %-4s %s\n" "LD"  $@ && $(CXXLINK)
 cmd			 = @printf " %-4s %s\n" $(1) $(2) && $(3) $(4)
 else
 ccompile	 = $(CCOMPILE)
-link		 = $(CLINK)
+clink		 = $(CLINK)
 cxxcompile	 = $(CXXCOMPILE)
 cxxlink		 = $(CXXLINK)
 cmd			 = $(3) $(4)
